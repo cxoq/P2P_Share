@@ -1,0 +1,35 @@
+{
+  "name": "neon-drop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sunucusuz WebRTC P2P dosya ve metin transferi — Node.js signaling server with a cyberpunk browser client.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js && node --check public/app.js && node --check public/protocol.js && node --check tools/browser-e2e.js",
+    "test": "node --test",
+    "test:e2e": "node tools/browser-e2e.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "webrtc",
+    "p2p",
+    "file-transfer",
+    "airdrop",
+    "datachannel",
+    "websocket"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "axe-core": "^4.14.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.3"
+  }
+}
