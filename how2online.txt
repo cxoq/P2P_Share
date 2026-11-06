@@ -1,0 +1,103 @@
+NEON DROP — İNTERNETE AÇMA REHBERİ
+(Bilgisayar bilgisi gerektirmez. Sırayla yap.)
+
+Ne yapıyoruz?
+Kendi bilgisayarında çalışan bu uygulamaya, arkadaşının da
+internetten girebilmesini sağlıyoruz. Modemden port açmak,
+IP ayarı yapmak YOK.
+
+================================================================
+YOL 1 — EN KOLAY (5 dakika, üyelik yok)
+Bilgisayarın açık kaldığı sürece çalışır.
+================================================================
+
+1) Node.js kurulu olsun.
+   Yoksa: https://nodejs.org  → yeşil "LTS" düğmesine bas, kur.
+
+2) Uygulamayı başlat.
+   Klasördeki "run.bat" dosyasına ÇİFT TIKLA.
+   Siyah bir pencere açılır. Bunu KAPATMA.
+   Tarayıcıda http://localhost:3000 açılır — bu senin kendi ekranın.
+
+3) Cloudflare programını indir.
+   Şu adresi tarayıcıya yaz:
+   https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
+   İnen dosyayı "cloudflared.exe" adıyla P2P_Share klasörüne koy.
+   Windows "bilinmeyen yayıncı" uyarısı verirse "Yine de çalıştır"a bas.
+
+4) İkinci bir komut penceresi aç.
+   P2P_Share klasörünün içindeyken adres çubuğuna "cmd" yaz, Enter.
+   (Veya Başlat → cmd → şu komutu yaz: cd /d "C:\Users\erenb\Favorites\P2P_Share")
+
+5) Şu komutu yaz ve Enter:
+   cloudflared.exe tunnel --url http://localhost:3000
+
+6) Ekranda şöyle bir adres çıkacak:
+   https://rastgele-bir-isim.trycloudflare.com
+   BU SENİN İNTERNET ADRESİN. Kopyala.
+
+7) Bu adresi arkadaşına gönder.
+   İkiniz de aynı adresi açın.
+   Biri "Oda oluştur"a bassın, çıkan 6 haneli kodu diğerine söylesin.
+   Diğeri kodu girsin. Bağlanınca dosya/metin gönderebilirsiniz.
+
+ÖNEMLİ:
+- Her iki siyah pencere de açık kalmalı.
+- Kapatırsan yayın biter.
+- Adres her açılışta değişir; yeni adresi tekrar gönder.
+- Bilgisayar uyursa bağlantı kopar. Uyku modunu kapat.
+
+================================================================
+YOL 2 — BİLGİSAYAR KAPALIYKEN DE ÇALIŞSIN (ücretsiz hesap)
+Render.com üzerinde yayınlarsın. Adres sabit kalır.
+================================================================
+
+1) https://github.com adresinden ücretsiz hesap aç.
+2) https://render.com adresinden GitHub ile ücretsiz giriş yap.
+3) GitHub'a bu projeyi yükle:
+   - GitHub'da "New repository" → isim ver → "Create".
+   - Açılan sayfada "uploading an existing file" bağlantısına bas.
+   - P2P_Share klasörünün İÇİNDEKİ dosyaları sürükleyip bırak.
+     node_modules klasörünü ve .env dosyasını YÜKLEME.
+   - "Commit changes"e bas.
+4) Render'da "New" → "Web Service" → GitHub projeni seç.
+5) Ayarlar:
+   Build Command:  npm ci
+   Start Command:  npm start
+   Health Check:   /healthz
+   Plan: Free
+6) "Create Web Service"e bas ve bekle (3-5 dakika).
+7) Render sana https://....onrender.com adresi verir.
+   Bu adresi arkadaşına gönderebilirsin. Artık bilgisayarın kapalıyken de çalışır.
+
+NOT: Render'ın ücretsiz planı 15 dakika kullanılmazsa uykuya geçer.
+İlk giriş 30-60 saniye sürebilir. Acele etme.
+
+================================================================
+BAĞLANTI KURULMAZSA (nadir)
+================================================================
+
+Cihaz satırında "Bağlantı kurulamadı" yazarsa:
+1) "Yeniden bağlan" düğmesine bas.
+2) İki taraf da aynı adresi kullandığından emin ol.
+3) Hâlâ olmuyorsa ağlardan biri P2P'yi engelliyordur.
+   Çözüm: TURN sunucusu gerekir. Bu, ayrı bir sunucu kiralamayı
+   gerektirir ve teknik bir adımdır. README.md dosyasındaki
+   "TURN yapılandırması" bölümünde anlatılıyor.
+   Router/modem ayarıyla çözülmez.
+
+================================================================
+GÜVENLİK — 3 KURAL
+================================================================
+
+1) Oda kodunu sadece paylaşmak istediğin kişiye ver.
+   Kodu bilen, odaya girebilir.
+2) İşin bitince sekmeyi kapat. Oda kendiliğinden silinir.
+3) Bilmediğin kişilerden gelen dosyaları kabul etme.
+
+================================================================
+TEK CÜMLELİK ÖZET
+================================================================
+
+run.bat'ı aç → cloudflared komutunu çalıştır → çıkan https
+adresini arkadaşına gönder → oda kodunu paylaş → dosya gönder.
