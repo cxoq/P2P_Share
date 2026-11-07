@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * NEON DROP — signaling server
+ * iShare — signaling server
  * ----------------------------
  * This process only brokers WebRTC negotiation between browsers. File bytes and
  * chat messages never touch Express, WebSocket, or the server filesystem.
@@ -126,7 +126,7 @@ function turnCredentials(nowMs) {
     // coturn expects `timestamp` or `timestamp:identifier`; the credential is
     // base64(HMAC-SHA1(secret, username)).
     const expires = Math.floor(nowMs / 1000) + TURN_TTL_SECONDS;
-    const username = `${expires}:neondrop`;
+    const username = `${expires}:ishare`;
     const credential = crypto.createHmac('sha1', TURN_SECRET).update(username).digest('base64');
     return { username, credential, expires };
   }
@@ -199,6 +199,7 @@ app.get('/healthz', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     status: 'ok',
+    app: 'ishare',
     version: APP_VERSION,
     rooms: rooms.size,
     uptime: Math.round(process.uptime()),
@@ -254,7 +255,7 @@ app.get('/api/qr', async (req, res) => {
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'private, max-age=300');
     if (req.query.download === '1') {
-      res.setHeader('Content-Disposition', 'attachment; filename="neon-drop-oda.png"');
+      res.setHeader('Content-Disposition', 'attachment; filename="ishare-room.png"');
     }
     return res.send(png);
   } catch (error) {
@@ -290,7 +291,7 @@ app.use((req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'not_found' });
   }
-  return res.status(404).type('text/plain').send('Bulunamadı');
+  return res.status(404).type('text/plain').send('Not found');
 });
 
 app.use((error, _req, res, _next) => {
@@ -395,7 +396,7 @@ function peersOf(room, excludeId) {
 
 function joinRoom(ctx, room, name, requestedId) {
   if (ctx.joined) {
-    sendError(ctx, 'ALREADY_JOINED', 'Zaten bir odadasınız.');
+    sendError(ctx, 'ALREADY_JOINED', 'You are already in a room.');
     return;
   }
 
@@ -462,7 +463,7 @@ function joinRoom(ctx, room, name, requestedId) {
 
 function createRoomAndJoin(ctx, name, requestedId) {
   if (ctx.joined) {
-    sendError(ctx, 'ALREADY_JOINED', 'Zaten bir odadasınız.');
+    sendError(ctx, 'ALREADY_JOINED', 'You are already in a room.');
     return;
   }
   // Reserve the code and join before storing it, so a failed join cannot leak
@@ -524,7 +525,7 @@ function detachSocket(ctx) {
 
 function handleSignal(ctx, msg) {
   if (!ctx.joined) {
-    sendError(ctx, 'NOT_IN_ROOM', 'Sinyal göndermek için bir odaya katılın.');
+    sendError(ctx, 'NOT_IN_ROOM', 'Join a room before sending signals.');
     return;
   }
 
@@ -534,13 +535,13 @@ function handleSignal(ctx, msg) {
   const targetId = typeof msg.to === 'string' ? msg.to : '';
   const target = room.members.get(targetId);
   if (!target || targetId === ctx.id || !target.ws || target.ws.readyState !== WebSocket.OPEN) {
-    sendError(ctx, 'PEER_UNAVAILABLE', 'Hedef cihaz şu anda ulaşılabilir değil.');
+    sendError(ctx, 'PEER_UNAVAILABLE', 'The target device is not reachable right now.');
     return;
   }
 
   const signal = msg.signal;
   if (!signal || typeof signal !== 'object' || Array.isArray(signal)) {
-    sendError(ctx, 'INVALID_SIGNAL', 'Geçersiz sinyal.');
+    sendError(ctx, 'INVALID_SIGNAL', 'Invalid signal.');
     return;
   }
 
@@ -551,7 +552,7 @@ function handleSignal(ctx, msg) {
       signal.sdp.length > MAX_SDP_BYTES ||
       !signal.sdp.startsWith('v=0')
     ) {
-      sendError(ctx, 'INVALID_SIGNAL', 'Geçersiz oturum tanımı.');
+      sendError(ctx, 'INVALID_SIGNAL', 'Invalid session description.');
       return;
     }
     sendJson(target.ws, {
@@ -569,7 +570,7 @@ function handleSignal(ctx, msg) {
       typeof candidate !== 'string' &&
       (typeof candidate !== 'object' || Array.isArray(candidate))
     ) {
-      sendError(ctx, 'INVALID_SIGNAL', 'Geçersiz ICE adayı.');
+      sendError(ctx, 'INVALID_SIGNAL', 'Invalid ICE candidate.');
       return;
     }
     let serializedLength = 0;
@@ -579,7 +580,7 @@ function handleSignal(ctx, msg) {
       serializedLength = MAX_CANDIDATE_BYTES + 1;
     }
     if (serializedLength > MAX_CANDIDATE_BYTES) {
-      sendError(ctx, 'INVALID_SIGNAL', 'ICE adayı çok büyük.');
+      sendError(ctx, 'INVALID_SIGNAL', 'ICE candidate is too large.');
       return;
     }
     sendJson(target.ws, {
@@ -590,7 +591,7 @@ function handleSignal(ctx, msg) {
     return;
   }
 
-  sendError(ctx, 'INVALID_SIGNAL', 'Bilinmeyen sinyal türü.');
+  sendError(ctx, 'INVALID_SIGNAL', 'Unknown signal type.');
 }
 
 function rateLimitOk(ctx) {
@@ -605,7 +606,7 @@ function rateLimitOk(ctx) {
 
 function handleMessage(ctx, raw) {
   if (!rateLimitOk(ctx)) {
-    sendError(ctx, 'RATE_LIMIT', 'Çok fazla istek gönderdiniz. Lütfen biraz bekleyin.');
+    sendError(ctx, 'RATE_LIMIT', 'Too many requests. Please wait a moment.');
     return;
   }
 
@@ -613,34 +614,34 @@ function handleMessage(ctx, raw) {
   try {
     const text = Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw);
     if (Buffer.byteLength(text, 'utf8') > MAX_PAYLOAD_BYTES) {
-      sendError(ctx, 'MESSAGE_TOO_LARGE', 'Mesaj çok büyük.', true);
+      sendError(ctx, 'MESSAGE_TOO_LARGE', 'Message is too large.', true);
       return;
     }
     msg = JSON.parse(text);
   } catch (error) {
-    sendError(ctx, 'INVALID_JSON', 'Geçersiz mesaj.');
+    sendError(ctx, 'INVALID_JSON', 'Invalid message.');
     return;
   }
 
   if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.type !== 'string') {
-    sendError(ctx, 'INVALID_MESSAGE', 'Geçersiz mesaj yapısı.');
+    sendError(ctx, 'INVALID_MESSAGE', 'Invalid message structure.');
     return;
   }
 
   switch (msg.type) {
     case 'create': {
-      if (ctx.joined) return sendError(ctx, 'ALREADY_JOINED', 'Zaten bir odadasınız.');
+      if (ctx.joined) return sendError(ctx, 'ALREADY_JOINED', 'You are already in a room.');
       const name = clampText(msg.name, 32) || 'Gizemli Cihaz';
       createRoomAndJoin(ctx, name, msg.clientId);
       break;
     }
 
     case 'join': {
-      if (ctx.joined) return sendError(ctx, 'ALREADY_JOINED', 'Zaten bir odadasınız.');
+      if (ctx.joined) return sendError(ctx, 'ALREADY_JOINED', 'You are already in a room.');
       const code = normalizeRoomCode(msg.room);
-      if (!code) return sendError(ctx, 'INVALID_ROOM', 'Oda kodu 6 haneli olmalı.');
+      if (!code) return sendError(ctx, 'INVALID_ROOM', 'Room codes are 6 characters.');
       const room = rooms.get(code);
-      if (!room) return sendError(ctx, 'ROOM_NOT_FOUND', 'Oda bulunamadı veya kapatıldı.');
+      if (!room) return sendError(ctx, 'ROOM_NOT_FOUND', 'Room not found or closed.');
       const name = clampText(msg.name, 32) || 'Gizemli Cihaz';
       joinRoom(ctx, room, name, msg.clientId);
       break;
@@ -672,7 +673,7 @@ function handleMessage(ctx, raw) {
       break;
 
     default:
-      sendError(ctx, 'UNKNOWN_MESSAGE', 'Bilinmeyen mesaj türü.');
+      sendError(ctx, 'UNKNOWN_MESSAGE', 'Unknown message type.');
   }
 }
 
@@ -728,29 +729,38 @@ function localAddresses() {
   return [...new Set(addresses)];
 }
 
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`[server] Port ${PORT} is already in use. Set PORT to a free port and try again.`);
+  } else {
+    console.error(`[server] ${error.message}`);
+  }
+  process.exit(1);
+});
+
 server.listen(PORT, HOST, () => {
   const displayHost = HOST === '0.0.0.0' || HOST === '::' ? 'localhost' : HOST;
   console.log('');
-  console.log('  ███ NEON DROP ███   P2P dosya transferi');
-  console.log(`  Yerel:    http://${displayHost}:${PORT}`);
+  console.log('  iShare — P2P file transfer');
+  console.log(`  Local:    http://${displayHost}:${PORT}`);
   for (const address of localAddresses()) {
-    console.log(`  Ağ:       http://${address}:${PORT}`);
+    console.log(`  Network:  http://${address}:${PORT}`);
   }
-  console.log(`  Sağlık:   http://${displayHost}:${PORT}/healthz`);
-  console.log(`  Mod:      ${NODE_ENV}`);
+  console.log(`  Health:   http://${displayHost}:${PORT}/healthz`);
+  console.log(`  Mode:     ${NODE_ENV}`);
   const turn = buildIceServers();
   console.log(
     `  TURN:     ${
       turn.turnMode === 'dynamic'
-        ? `kısa ömürlü kimlik bilgileri (${TURN_TTL_SECONDS} sn)`
+        ? `short-lived credentials (${TURN_TTL_SECONDS}s)`
         : turn.turnMode === 'static'
-          ? 'statik kimlik bilgileri'
+          ? 'static credentials'
           : turn.turnMode === 'json'
             ? 'ICE_SERVERS_JSON'
-            : 'yok (yalnızca STUN)'
+            : 'none (STUN only)'
     }`,
   );
-  console.log('  Sunucu dosya verisi taşımaz; yalnızca WebRTC el sıkışmasını iletir.');
+  console.log('  The server does not carry file data; it only relays the WebRTC handshake.');
   console.log('');
 });
 
@@ -758,17 +768,17 @@ let shuttingDown = false;
 function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`\n[server] ${signal} alındı, kapatılıyor...`);
+  console.log(`\n[server] ${signal} received, shutting down...`);
   clearInterval(heartbeat);
   for (const ws of wss.clients) {
     try {
-      ws.close(1001, 'Sunucu kapanıyor');
+      ws.close(1001, 'Server shutting down');
     } catch (error) {
       ws.terminate();
     }
   }
   server.close(() => {
-    console.log('[server] Kapandı.');
+    console.log('[server] Closed.');
     process.exit(0);
   });
   setTimeout(() => process.exit(1), 5000).unref();

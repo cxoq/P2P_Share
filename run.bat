@@ -1,16 +1,15 @@
 @echo off
 setlocal
 chcp 65001 >nul
-title NEON DROP - P2P Dosya Transferi
+title iShare
 cd /d "%~dp0"
 
 where node >nul 2>nul
 if errorlevel 1 (
   echo.
-  echo  [HATA] Node.js bulunamadi.
+  echo  [ERROR] Node.js was not found.
   echo.
-  echo  Node.js 18 veya daha yenisini kurun:
-  echo  https://nodejs.org/
+  echo  Install Node.js 18 or newer from https://nodejs.org/
   echo.
   pause
   exit /b 1
@@ -19,28 +18,27 @@ if errorlevel 1 (
 if not defined PORT set "PORT=3000"
 
 echo.
-echo  NEON DROP baslatiliyor...
-echo  Yerel adres: http://localhost:%PORT%
+echo  Starting iShare...
+echo  Local address: http://localhost:%PORT% (the next free port if this one is busy)
+echo  A public Cloudflare link will appear here in a few seconds.
 echo.
 
 if not exist "node_modules\" (
-  echo  Bagimliliklar ilk kez yukleniyor. Bu islem birkac dakika surebilir...
+  echo  Installing dependencies for the first time. This can take a few minutes...
   call npm install --no-audit --no-fund
   if errorlevel 1 (
     echo.
-    echo  [HATA] npm install basarisiz oldu.
-    echo  Internet baglantisini ve npm ayarlarini kontrol edin.
+    echo  [ERROR] npm install failed.
+    echo  Check your internet connection and npm settings.
     pause
     exit /b 1
   )
 )
 
-start "" /b powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 2; Start-Process 'http://localhost:%PORT%'"
-
-call npm start
+node tools\host.js %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.
-if not "%EXIT_CODE%"=="0" echo  Sunucu hata koduyla kapandi: %EXIT_CODE%
+if not "%EXIT_CODE%"=="0" echo  The host stopped with exit code %EXIT_CODE%.
 pause
 exit /b %EXIT_CODE%

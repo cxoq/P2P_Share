@@ -172,7 +172,7 @@ test('health, config, QR and static security headers work', async () => {
   const index = await fetch(`${baseUrl}/`);
   const html = await index.text();
   assert.equal(index.status, 200);
-  assert.match(html, /NEON DROP/);
+  assert.match(html, /iShare/);
   assert.match(index.headers.get('content-security-policy') || '', /default-src 'self'/);
   assert.equal(index.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(index.headers.get('x-frame-options'), 'DENY');
@@ -225,7 +225,7 @@ test('serves time-limited TURN credentials without leaking the shared secret', a
       [server.urls].flat().some((url) => /^turns?:/i.test(url)),
     );
     assert.ok(turn, 'TURN server should be advertised');
-    assert.match(turn.username, /^\d+:neondrop$/);
+    assert.match(turn.username, /^\d+:ishare$/);
     assert.match(turn.username.split(':')[0], /^\d+$/);
 
     const expires = Number(turn.username.split(':')[0]);

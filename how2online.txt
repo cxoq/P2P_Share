@@ -1,103 +1,113 @@
-NEON DROP — İNTERNETE AÇMA REHBERİ
-(Bilgisayar bilgisi gerektirmez. Sırayla yap.)
+iShare — GOING ONLINE
+(No networking knowledge needed. Just follow the steps.)
 
-Ne yapıyoruz?
-Kendi bilgisayarında çalışan bu uygulamaya, arkadaşının da
-internetten girebilmesini sağlıyoruz. Modemden port açmak,
-IP ayarı yapmak YOK.
+What are we doing?
+The app runs on your computer, and we make it reachable from the
+internet so a friend can open it too. No router port forwarding,
+no IP settings.
+
 
 ================================================================
-YOL 1 — EN KOLAY (5 dakika, üyelik yok)
-Bilgisayarın açık kaldığı sürece çalışır.
+WAY 1 — EASIEST (about 1 minute, no account)
+Works while your computer is on and the window stays open.
+This is now automatic: run.bat starts the tunnel for you.
 ================================================================
 
-1) Node.js kurulu olsun.
-   Yoksa: https://nodejs.org  → yeşil "LTS" düğmesine bas, kur.
+1) Install Node.js (once).
+   If you don't have it: https://nodejs.org
+   Press the green "LTS" button and install.
 
-2) Uygulamayı başlat.
-   Klasördeki "run.bat" dosyasına ÇİFT TIKLA.
-   Siyah bir pencere açılır. Bunu KAPATMA.
-   Tarayıcıda http://localhost:3000 açılır — bu senin kendi ekranın.
-
-3) Cloudflare programını indir.
-   Şu adresi tarayıcıya yaz:
+2) Get cloudflared (once).
+   Download this file:
    https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
-   İnen dosyayı "cloudflared.exe" adıyla P2P_Share klasörüne koy.
-   Windows "bilinmeyen yayıncı" uyarısı verirse "Yine de çalıştır"a bas.
+   Rename it to "cloudflared.exe" and put it in the P2P_Share folder,
+   next to run.bat.
+   If Windows shows an "unknown publisher" warning, choose
+   "Run anyway" / "Keep".
 
-4) İkinci bir komut penceresi aç.
-   P2P_Share klasörünün içindeyken adres çubuğuna "cmd" yaz, Enter.
-   (Veya Başlat → cmd → şu komutu yaz: cd /d "C:\Users\erenb\Favorites\P2P_Share")
+3) Double-click "run.bat".
+   A black window opens. Leave it open.
+   After a few seconds it prints:
 
-5) Şu komutu yaz ve Enter:
-   cloudflared.exe tunnel --url http://localhost:3000
+     Your public link (copied to the clipboard):
+     https://something-random.trycloudflare.com
 
-6) Ekranda şöyle bir adres çıkacak:
-   https://rastgele-bir-isim.trycloudflare.com
-   BU SENİN İNTERNET ADRESİN. Kopyala.
+   That is your internet address. It is already copied to your
+   clipboard. If not, select it and copy it.
 
-7) Bu adresi arkadaşına gönder.
-   İkiniz de aynı adresi açın.
-   Biri "Oda oluştur"a bassın, çıkan 6 haneli kodu diğerine söylesin.
-   Diğeri kodu girsin. Bağlanınca dosya/metin gönderebilirsiniz.
+4) Send that link to your friend.
+   Both of you open it.
+   One person presses "Create a room" and tells the other the
+   6-character code. The other enters it. Once connected you can
+   send files and text.
 
-ÖNEMLİ:
-- Her iki siyah pencere de açık kalmalı.
-- Kapatırsan yayın biter.
-- Adres her açılışta değişir; yeni adresi tekrar gönder.
-- Bilgisayar uyursa bağlantı kopar. Uyku modunu kapat.
+IMPORTANT:
+- The black window must stay open. Closing it ends the tunnel.
+- The address changes every time you start; send the new one.
+- If the computer sleeps, the connection drops. Turn off sleep mode.
+
+Note: if cloudflared.exe is missing, run.bat starts the site in
+local-only mode and prints the download link. Everything still
+works at http://localhost:3000 on that computer.
+
+To start without the tunnel on purpose:
+   run.bat --local
+
 
 ================================================================
-YOL 2 — BİLGİSAYAR KAPALIYKEN DE ÇALIŞSIN (ücretsiz hesap)
-Render.com üzerinde yayınlarsın. Adres sabit kalır.
+WAY 2 — KEEP IT ONLINE WHILE YOUR COMPUTER IS OFF
+(free account, Render.com — the address stays the same)
 ================================================================
 
-1) https://github.com adresinden ücretsiz hesap aç.
-2) https://render.com adresinden GitHub ile ücretsiz giriş yap.
-3) GitHub'a bu projeyi yükle:
-   - GitHub'da "New repository" → isim ver → "Create".
-   - Açılan sayfada "uploading an existing file" bağlantısına bas.
-   - P2P_Share klasörünün İÇİNDEKİ dosyaları sürükleyip bırak.
-     node_modules klasörünü ve .env dosyasını YÜKLEME.
-   - "Commit changes"e bas.
-4) Render'da "New" → "Web Service" → GitHub projeni seç.
-5) Ayarlar:
+1) Create a free account at https://github.com
+2) Sign in to https://render.com with GitHub (free).
+3) Upload this project to GitHub:
+   - On GitHub: "New repository" → give it a name → "Create".
+   - On the next page open "uploading an existing file".
+   - Drag the files from INSIDE the P2P_Share folder.
+     Do NOT upload node_modules or the .env file.
+   - Press "Commit changes".
+4) In Render: "New" → "Web Service" → pick your GitHub project.
+5) Settings:
    Build Command:  npm ci
    Start Command:  npm start
    Health Check:   /healthz
    Plan: Free
-6) "Create Web Service"e bas ve bekle (3-5 dakika).
-7) Render sana https://....onrender.com adresi verir.
-   Bu adresi arkadaşına gönderebilirsin. Artık bilgisayarın kapalıyken de çalışır.
+6) Press "Create Web Service" and wait (3-5 minutes).
+7) Render gives you an address like https://....onrender.com.
+   Send that to your friend. It keeps working while your
+   computer is off.
 
-NOT: Render'ın ücretsiz planı 15 dakika kullanılmazsa uykuya geçer.
-İlk giriş 30-60 saniye sürebilir. Acele etme.
+NOTE: Render's free plan sleeps after 15 minutes without use.
+The first visit can take 30-60 seconds. Be patient.
 
-================================================================
-BAĞLANTI KURULMAZSA (nadir)
-================================================================
-
-Cihaz satırında "Bağlantı kurulamadı" yazarsa:
-1) "Yeniden bağlan" düğmesine bas.
-2) İki taraf da aynı adresi kullandığından emin ol.
-3) Hâlâ olmuyorsa ağlardan biri P2P'yi engelliyordur.
-   Çözüm: TURN sunucusu gerekir. Bu, ayrı bir sunucu kiralamayı
-   gerektirir ve teknik bir adımdır. README.md dosyasındaki
-   "TURN yapılandırması" bölümünde anlatılıyor.
-   Router/modem ayarıyla çözülmez.
 
 ================================================================
-GÜVENLİK — 3 KURAL
+IF THE CONNECTION FAILS (rare)
 ================================================================
 
-1) Oda kodunu sadece paylaşmak istediğin kişiye ver.
-   Kodu bilen, odaya girebilir.
-2) İşin bitince sekmeyi kapat. Oda kendiliğinden silinir.
-3) Bilmediğin kişilerden gelen dosyaları kabul etme.
+If a device says "Could not connect":
+1) Press the retry button next to that device.
+2) Make sure both sides are on the same link.
+3) If it still fails, one of the networks is probably blocking P2P.
+   The fix is a TURN server. That requires a separate server and a
+   more technical setup; see the "TURN configuration" section in
+   README.md. Router/modem settings will not fix this.
+
 
 ================================================================
-TEK CÜMLELİK ÖZET
+SAFETY — 3 RULES
 ================================================================
 
-run.bat'ı aç → cloudflared komutunu çalıştır → çıkan https
-adresini arkadaşına gönder → oda kodunu paylaş → dosya gönder.
+1) Give the room code only to the person you want in the room.
+   Anyone with the code can join.
+2) Close the tab when you are done. The room is deleted automatically.
+3) Do not accept files from people you do not know.
+
+
+================================================================
+ONE-SENTENCE SUMMARY
+================================================================
+
+Double-click run.bat → copy the https link it prints → send it to
+your friend → share the room code → send a file.

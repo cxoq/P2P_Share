@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * NEON DROP — browser end-to-end suite.
+ * iShare — browser end-to-end suite.
  *
  * Two or more headless Chromium pages (Edge/Chrome) exercise the real UI and a
  * real WebRTC datachannel:
@@ -346,7 +346,7 @@ async function scenarioBaseline(env) {
       a,
       `(() => {
         const node = document.querySelector('#peer-list .peer:not(.peer--self) .peer__status');
-        return !!node && /^Bağlı/.test(node.textContent);
+        return !!node && /^Connected/.test(node.textContent);
       })()`,
       'peer connected label',
       10000,
@@ -392,7 +392,7 @@ async function scenarioBaseline(env) {
     await b.evaluate("document.getElementById('btn-leave').click()");
     await waitFor(b, "!document.getElementById('view-landing').hidden", 'landing after leave');
     await waitFor(a, onlinePeersExpr(0), 'peer removed after leave');
-    const sessionRoom = await b.evaluate("sessionStorage.getItem('neondrop:room')");
+    const sessionRoom = await b.evaluate("sessionStorage.getItem('ishare:room')");
     if (sessionRoom) throw new Error(`Leave did not clear the stored room: ${sessionRoom}`);
     console.log('  PASS leave clears the room on both sides');
 
@@ -407,8 +407,8 @@ async function scenarioBaseline(env) {
 async function scenarioLargeFile(env) {
   const [a, b] = await openPages(env, 2);
   try {
-    const code = await createRoom(a, 'Büyük Gönderen');
-    await joinRoom(env, b, code, 'Büyük Alan');
+    const code = await createRoom(a, 'Big Sender');
+    await joinRoom(env, b, code, 'Big Receiver');
     await waitConnected([a, b], 1);
 
     const size = 50 * 1024 * 1024 + 17;
@@ -443,8 +443,8 @@ async function scenarioLargeFile(env) {
 async function scenarioReject(env) {
   const [a, b] = await openPages(env, 2);
   try {
-    const code = await createRoom(a, 'Reddeden Gönderen');
-    await joinRoom(env, b, code, 'Reddeden Alıcı');
+    const code = await createRoom(a, 'Declining Sender');
+    await joinRoom(env, b, code, 'Declining Receiver');
     await waitConnected([a, b], 1);
 
     const fixture = makeFixture(1024 * 1024, 7);
@@ -458,7 +458,7 @@ async function scenarioReject(env) {
     const senderLabel = await a.evaluate(
       "document.querySelector('#transfer-list .transfer .transfer__status')?.textContent",
     );
-    if (!/reddetti/i.test(senderLabel || '')) throw new Error(`Unexpected reject label: ${senderLabel}`);
+    if (!/declined/i.test(senderLabel || '')) throw new Error(`Unexpected reject label: ${senderLabel}`);
     await sleep(500);
     const senderStatus = await a.evaluate(
       "document.querySelector('#transfer-list .transfer')?.dataset.status",
@@ -475,8 +475,8 @@ async function scenarioReject(env) {
 async function scenarioCancel(env) {
   const [a, b] = await openPages(env, 2);
   try {
-    const code = await createRoom(a, 'İptal Eden');
-    await joinRoom(env, b, code, 'İptal Edilen');
+    const code = await createRoom(a, 'Cancelling');
+    await joinRoom(env, b, code, 'Cancelled');
     await waitConnected([a, b], 1);
 
     // Phase 1: cancel while the receiver has not accepted yet.
@@ -522,7 +522,7 @@ async function scenarioCancel(env) {
       const items = [...document.querySelectorAll('#transfer-list .transfer[data-direction="in"]')];
       return items[items.length - 1]?.querySelector('.transfer__status')?.textContent;
     })()`);
-    if (!/iptal/i.test(receiverLabel || '')) throw new Error(`Unexpected receiver cancel label: ${receiverLabel}`);
+    if (!/cancel/i.test(receiverLabel || '')) throw new Error(`Unexpected receiver cancel label: ${receiverLabel}`);
     console.log(`  PASS cancel during ${before} reaches the receiver`);
     assertClean([a, b], 'cancel');
   } finally {
@@ -534,14 +534,14 @@ async function scenarioCancel(env) {
 async function scenarioAcceptTimeout(env) {
   const a = await openPage(env);
   await a.send('Page.addScriptToEvaluateOnNewDocument', {
-    source: 'window.__NEON_TEST_ACCEPT_TIMEOUT_MS = 1200;',
+    source: 'window.__ISHARE_TEST_ACCEPT_TIMEOUT_MS = 1200;',
   });
   await goto(a, env.baseUrl + '/');
   const b = await openPage(env);
   await goto(b, env.baseUrl + '/');
   try {
-    const code = await createRoom(a, 'Zaman Aşımı A');
-    await joinRoom(env, b, code, 'Zaman Aşımı B');
+    const code = await createRoom(a, 'Timeout A');
+    await joinRoom(env, b, code, 'Timeout B');
     await waitConnected([a, b], 1);
 
     const fixture = makeFixture(512 * 1024, 17);
@@ -553,7 +553,7 @@ async function scenarioAcceptTimeout(env) {
       const items = [...document.querySelectorAll('#transfer-list .transfer[data-direction="out"]')];
       return items[items.length - 1]?.querySelector('.transfer__status')?.textContent;
     })()`);
-    if (!/yanıt vermedi|zaman aşımı/i.test(senderError || '')) {
+    if (!/did not respond|timed out/i.test(senderError || '')) {
       throw new Error(`Unexpected accept-timeout label: ${senderError}`);
     }
     await waitFor(b, transferStatusExpr('in', 'cancelled'), 'receiver cancelled by timeout', 15000);
@@ -566,18 +566,18 @@ async function scenarioAcceptTimeout(env) {
 }
 
 const DC_PROBE = `(() => {
-  window.__neonTestChannels = [];
+  window.__ishareTestChannels = [];
   const Native = window.RTCPeerConnection;
   class ProbedPeerConnection extends Native {
     constructor(...args) {
       super(...args);
       this.addEventListener('datachannel', (event) => {
-        window.__neonTestChannels.push(event.channel);
+        window.__ishareTestChannels.push(event.channel);
       });
     }
     createDataChannel(...args) {
       const channel = super.createDataChannel(...args);
-      window.__neonTestChannels.push(channel);
+      window.__ishareTestChannels.push(channel);
       return channel;
     }
   }
@@ -616,7 +616,7 @@ async function scenarioChannelClosed(env) {
     );
 
     const closed = await b.evaluate(`(() => {
-      const channel = (window.__neonTestChannels || []).find((dc) => dc.readyState === 'open');
+      const channel = (window.__ishareTestChannels || []).find((dc) => dc.readyState === 'open');
       if (!channel) return false;
       channel.close();
       return true;
@@ -634,7 +634,7 @@ async function scenarioChannelClosed(env) {
       ),
     );
     for (const message of messages) {
-      if (!/kanal|bağlantı/i.test(message || '')) throw new Error(`Unexpected channel-close label: ${message}`);
+      if (!/channel|connection/i.test(message || '')) throw new Error(`Unexpected channel-close label: ${message}`);
     }
     console.log('  PASS data channel close fails the transfer cleanly on both sides');
 
@@ -701,7 +701,7 @@ async function scenarioMesh(env) {
       ),
     );
     for (const text of receiverSizes) {
-      if (!text || !/^1,0+ MB/.test(text)) throw new Error(`Unexpected receiver size: ${text}`);
+      if (!text || !/^1.0+ MB/.test(text)) throw new Error(`Unexpected receiver size: ${text}`);
     }
     console.log('  PASS multi-recipient file A→B,C');
     assertClean([a, b, c], 'mesh');
@@ -715,7 +715,7 @@ async function scenarioMesh(env) {
 async function scenarioReloadResume(env) {
   const [a, b] = await openPages(env, 2);
   try {
-    const code = await createRoom(a, 'Kalıcı A');
+    const code = await createRoom(a, 'Persistent A');
     await joinRoom(env, b, code, 'Yenilenen B');
     await waitConnected([a, b], 1);
 
@@ -726,7 +726,7 @@ async function scenarioReloadResume(env) {
     const peerIdBefore = await a.evaluate(
       "document.querySelector('#peer-list .peer:not(.peer--self)')?.dataset.peerId",
     );
-    const clientIdBefore = await b.evaluate("sessionStorage.getItem('neondrop:client-id')");
+    const clientIdBefore = await b.evaluate("sessionStorage.getItem('ishare:client-id')");
 
     await b.send('Page.reload');
     await waitFor(b, ROOM_CODE_EXPR, 'auto rejoin after reload', 30000);
@@ -739,7 +739,7 @@ async function scenarioReloadResume(env) {
     const peerIdAfter = await a.evaluate(
       "document.querySelector('#peer-list .peer:not(.peer--self)')?.dataset.peerId",
     );
-    const clientIdAfter = await b.evaluate("sessionStorage.getItem('neondrop:client-id')");
+    const clientIdAfter = await b.evaluate("sessionStorage.getItem('ishare:client-id')");
     if (peerCount !== 1) throw new Error(`Reload left ${peerCount} peer entries on A`);
     if (peerIdAfter !== peerIdBefore) throw new Error('Reload created a new peer identity instead of resuming');
     if (clientIdAfter !== clientIdBefore) throw new Error('Client id was not preserved across reload');
@@ -844,7 +844,7 @@ async function pressKey(page, key, modifiers = 0) {
 async function scenarioAccessibility(env) {
   const [a, b] = await openPages(env, 2);
   try {
-    // Keyboard-only room creation: name → Tab → Enter on "Oda oluştur".
+    // Keyboard-only room creation: name → Tab → Enter on "Create a room".
     await a.evaluate("document.getElementById('device-name').focus()");
     await a.send('Input.insertText', { text: 'Klavye A' });
     await pressKey(a, 'Tab');
@@ -974,7 +974,7 @@ async function main() {
 
   const serverPort = await getFreePort();
   const debugPort = await getFreePort();
-  const tmpDir = path.join(os.tmpdir(), `neondrop-e2e-${Date.now()}`);
+  const tmpDir = path.join(os.tmpdir(), `ishare-e2e-${Date.now()}`);
   const profileDir = path.join(tmpDir, 'profile');
   fs.mkdirSync(profileDir, { recursive: true });
 

@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * NEON DROP — pure client-protocol helpers.
+ * iShare — pure client-protocol helpers.
  *
- * This file is loaded in the browser as a global (`window.NeonProtocol`) and is
+ * This file is loaded in the browser as a global (`window.IShareProtocol`) and is
  * also required directly by `test/protocol.test.js`, so the validation rules
  * that guard incoming chunks, file metadata, identifiers and file names can be
  * unit tested without a DOM.
@@ -14,7 +14,7 @@
   if (typeof module === 'object' && module.exports) {
     module.exports = api;
   } else {
-    root.NeonProtocol = api;
+    root.IShareProtocol = api;
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createProtocol() {
   const MAX_CHUNK_BYTES = 256 * 1024;

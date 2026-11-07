@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * NEON DROP — browser transfer engine
+ * iShare — browser transfer engine
  * -----------------------------------
  * Signaling only goes through the WebSocket server. Files and text then travel
  * over an ordered, reliable RTCDataChannel. Files are sliced into 64 KB chunks
@@ -10,11 +10,11 @@
  */
 
 (() => {
-  const protocol = window.NeonProtocol;
-  if (!protocol) throw new Error('protocol.js yüklenemedi');
+  const protocol = window.IShareProtocol;
+  if (!protocol) throw new Error('protocol.js failed to load');
 
-  const SESSION_ID_KEY = 'neondrop:client-id';
-  const SESSION_ROOM_KEY = 'neondrop:room';
+  const SESSION_ID_KEY = 'ishare:client-id';
+  const SESSION_ROOM_KEY = 'ishare:room';
 
   const CHUNK_SIZE = 64 * 1024;
   const BUFFER_HIGH_WATER = 4 * 1024 * 1024;
@@ -26,7 +26,7 @@
   // The browser E2E suite shortens this through a pre-load test hook so the
   // two-minute wait does not dominate the run. It has no effect in production.
   const ACCEPT_TIMEOUT_MS = (() => {
-    const override = Number(window.__NEON_TEST_ACCEPT_TIMEOUT_MS);
+    const override = Number(window.__ISHARE_TEST_ACCEPT_TIMEOUT_MS);
     return Number.isFinite(override) && override > 0 ? override : 2 * 60 * 1000;
   })();
   const DELIVERY_TIMEOUT_MS = 5 * 60 * 1000;
@@ -74,6 +74,7 @@
   const els = {
     signalStatus: byId('signal-status'),
     signalLabel: byId('signal-label'),
+    themeToggle: byId('theme-toggle'),
     versionChip: byId('version-chip'),
     footerVersion: byId('footer-version'),
     viewLanding: byId('view-landing'),
@@ -130,6 +131,7 @@
   function init() {
     bindEvents();
     setDefaultName();
+    initTheme();
     hydrateRoomFromUrl();
     updateTextComposer();
 
@@ -137,7 +139,7 @@
     connectSignaling();
 
     if (!('RTCPeerConnection' in window) || !('RTCDataChannel' in window)) {
-      toast('Bu tarayıcı WebRTC veri kanalını desteklemiyor. Güncel Chrome, Edge, Firefox veya Safari kullanın.', 'error', 9000);
+      toast('This browser does not support WebRTC data channels. Use an up-to-date Chrome, Edge, Firefox, or Safari.', 'error', 9000);
     }
   }
 
@@ -161,13 +163,13 @@
     });
 
     els.btnCopyRoom.addEventListener('click', () => {
-      if (state.room) copyText(state.room, 'Oda kodu kopyalandı.');
+      if (state.room) copyText(state.room, 'Room code copied.');
     });
     els.btnCopyLink.addEventListener('click', () => {
-      if (state.room) copyText(roomUrl(), 'Davet bağlantısı kopyalandı.');
+      if (state.room) copyText(roomUrl(), 'Invite link copied.');
     });
     els.btnCopyLinkModal.addEventListener('click', () => {
-      if (state.room) copyText(roomUrl(), 'Davet bağlantısı kopyalandı.');
+      if (state.room) copyText(roomUrl(), 'Invite link copied.');
     });
     els.btnShowQr.addEventListener('click', openQrDialog);
     els.btnCloseQr.addEventListener('click', closeQrDialog);
@@ -253,7 +255,7 @@
       if (!copyButton) return;
       const message = copyButton.closest('.message');
       const text = message?.querySelector('.message__text')?.textContent || '';
-      if (text) copyText(text, 'Metin kopyalandı.');
+      if (text) copyText(text, 'Text copied.');
     });
 
     els.transferList.addEventListener('click', (event) => {
@@ -269,7 +271,7 @@
           acceptIncoming(transfer);
           break;
         case 'reject':
-          rejectIncoming(transfer, 'Kullanıcı reddetti');
+          rejectIncoming(transfer, 'User declined');
           break;
         case 'cancel':
           cancelTransfer(transfer);
@@ -289,6 +291,35 @@
         } catch (error) {
           /* Best effort only. */
         }
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Theme
+  // ---------------------------------------------------------------------------
+
+  function initTheme() {
+    const root = document.documentElement;
+    const button = els.themeToggle;
+    if (!button) return;
+
+    const apply = (theme) => {
+      root.dataset.theme = theme;
+      const label = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+      button.setAttribute('aria-label', label);
+      button.title = label;
+    };
+
+    apply(root.dataset.theme === 'dark' ? 'dark' : 'light');
+
+    button.addEventListener('click', () => {
+      const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      apply(next);
+      try {
+        window.localStorage.setItem('ishare:theme', next);
+      } catch (error) {
+        /* private mode */
       }
     });
   }
@@ -359,12 +390,12 @@
     if (state.room) {
       for (const peer of state.peers.values()) peer.signalingOnline = false;
       renderPeerList();
-      showOfflineBanner('Sinyal sunucusu bağlantısı koptu. Aktif P2P aktarımları devam ediyor; yeniden bağlanılıyor…');
+      showOfflineBanner('Lost the signaling server. Active P2P transfers keep running; reconnecting…');
     }
 
     if (state.pendingRoomAction) {
       finishJoining();
-      showLandingError('Sinyal sunucusuna ulaşılamadı. Yeniden bağlanmayı deneyin.');
+      showLandingError('Could not reach the signaling server. Try reconnecting.');
     }
 
     if (!state.manualClose) scheduleSignalingReconnect(failedToCreate ? 1500 : 800);
@@ -384,9 +415,9 @@
     state.signaling = mode;
     els.signalStatus.dataset.state = mode;
     const labels = {
-      online: 'Sunucu çevrimiçi',
-      connecting: 'Bağlanıyor',
-      offline: 'Sunucu çevrimdışı',
+      online: 'Server online',
+      connecting: 'Connecting',
+      offline: 'Server offline',
     };
     els.signalLabel.textContent = labels[mode] || mode;
   }
@@ -449,7 +480,7 @@
 
   function handleServerError(message) {
     const code = typeof message.code === 'string' ? message.code : 'ERROR';
-    const text = typeof message.message === 'string' ? message.message : 'Beklenmeyen bir sunucu hatası oluştu.';
+    const text = typeof message.message === 'string' ? message.message : 'An unexpected server error occurred.';
 
     if (state.pendingRoomAction) {
       if (code === 'ROOM_NOT_FOUND') clearSessionRoom();
@@ -460,7 +491,7 @@
 
     if (state.room && (code === 'ROOM_NOT_FOUND' || code === 'ID_TAKEN')) {
       state.rejoinBlocked = true;
-      showOfflineBanner('Sinyal odası artık mevcut değil. Mevcut P2P bağlantıları çalışmaya devam edebilir.');
+      showOfflineBanner('The signaling room no longer exists. Existing P2P connections can keep working.');
       toast(text, 'error', 7000);
       return;
     }
@@ -481,7 +512,7 @@
     hideLandingError();
     if (!sendWs({ type: 'create', name, clientId: state.selfId })) {
       finishJoining();
-      showLandingError('Sinyal sunucusuna bağlanılamadı.');
+      showLandingError('Could not connect to the signaling server.');
     }
   }
 
@@ -489,7 +520,7 @@
     if (!ensureSignalingReady()) return;
     const code = normalizeRoomCodeInput(els.roomInput.value);
     if (code.length !== ROOM_CODE_LENGTH) {
-      showLandingError('Oda kodu 6 haneli olmalı. Örnek: K7M2QX');
+      showLandingError('Room codes are 6 characters. Example: K7M2QX');
       els.roomInput.focus();
       return;
     }
@@ -501,14 +532,14 @@
     els.roomInput.value = code;
     if (!sendWs({ type: 'join', room: code, name, clientId: state.selfId })) {
       finishJoining();
-      showLandingError('Sinyal sunucusuna bağlanılamadı.');
+      showLandingError('Could not connect to the signaling server.');
     }
   }
 
   function ensureSignalingReady() {
     if (state.ws && state.ws.readyState === WebSocket.OPEN) return true;
     if (!state.ws) connectSignaling();
-    showLandingError('Sinyal sunucusuna bağlanılıyor. Birkaç saniye sonra tekrar deneyin.');
+    showLandingError('Connecting to the signaling server. Try again in a few seconds.');
     return false;
   }
 
@@ -517,7 +548,7 @@
     state.joinTimer = window.setTimeout(() => {
       if (!state.pendingRoomAction) return;
       finishJoining();
-      showLandingError('Sunucu yanıt vermedi. Lütfen tekrar deneyin.');
+      showLandingError('The server did not respond. Please try again.');
     }, 12_000);
   }
 
@@ -557,7 +588,7 @@
     state.pendingAutoJoin = null;
 
     if (previousRoom && previousRoom !== message.room) {
-      closeAllPeers('Oda değişti');
+      closeAllPeers('Room changed');
       clearRoomLists();
     }
 
@@ -582,7 +613,7 @@
     }
 
     for (const peerId of [...state.peers.keys()]) {
-      if (!announcedIds.has(peerId)) destroyPeer(peerId, 'Cihaz odada değil');
+      if (!announcedIds.has(peerId)) destroyPeer(peerId, 'Device is not in the room');
     }
 
     renderPeerList();
@@ -595,7 +626,7 @@
       // transport so a lost offer or stale ICE generation cannot wedge the
       // negotiation; the other side will answer our fresh offer.
       if (peer.pc) {
-        cancelPeerTransfers(peer, 'Bağlantı yeniden kuruluyor');
+        cancelPeerTransfers(peer, 'Reconnecting');
         closePeerTransport(peer);
       }
       peer.connectAttempts = 0;
@@ -604,9 +635,9 @@
     }
 
     if (wasCreate) {
-      toast('Oda hazır. Kod veya davet bağlantısını paylaş.', 'success', 4500);
+      toast('Room ready. Share the code or invite link.', 'success', 4500);
     } else if (wasResume) {
-      toast('Sinyal bağlantısı yeniden kuruldu.', 'success');
+      toast('Signaling connection restored.', 'success');
     }
   }
 
@@ -617,7 +648,7 @@
     if (!peer) return;
     renderPeerList();
     if (!existed) {
-      toast(`${peer.name} odaya katıldı.`);
+      toast(`${peer.name} joined the room.`);
     }
   }
 
@@ -637,7 +668,7 @@
 
   function handlePeerLeft(peerId) {
     if (!peerId) return;
-    destroyPeer(peerId, 'Cihaz odadan ayrıldı');
+    destroyPeer(peerId, 'Device left the room');
   }
 
   function upsertPeer(peerInfo) {
@@ -646,7 +677,7 @@
     if (!peer) {
       peer = {
         id: peerInfo.id,
-        name: cleanName(peerInfo.name, 32) || 'Gizemli Cihaz',
+        name: cleanName(peerInfo.name, 32) || 'Unknown device',
         signalingOnline: true,
         pc: null,
         dc: null,
@@ -682,7 +713,7 @@
     peer.destroyed = true;
     peer.signalingOnline = false;
     clearPeerTimers(peer);
-    cancelPeerTransfers(peer, reason || 'Bağlantı kapandı');
+    cancelPeerTransfers(peer, reason || 'Connection closed');
     closePeerTransport(peer);
     state.peers.delete(peerId);
     state.selectedPeers.delete(peerId);
@@ -737,14 +768,14 @@
   function showRoomView() {
     els.viewLanding.hidden = true;
     els.viewRoom.hidden = false;
-    document.title = `${state.room} · NEON DROP`;
+    document.title = `${state.room} · iShare`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function showLandingView() {
     els.viewRoom.hidden = true;
     els.viewLanding.hidden = false;
-    document.title = 'NEON DROP — Cihazdan cihaza dosya transferi';
+    document.title = 'iShare — send files between browsers';
     window.scrollTo({ top: 0, behavior: 'smooth' });
     state.selfId = createId();
     storeClientId(state.selfId);
@@ -810,7 +841,7 @@
       button.setAttribute(
         'aria-label',
         `${peer.name}, ${ui.label}. ${
-          ui.state === 'online' ? 'Seçimi değiştir.' : 'Yeniden bağlanmak için yandaki düğmeyi kullan.'
+          ui.state === 'online' ? 'Toggle this device.' : 'Use the button beside this to reconnect.'
         }`,
       );
       avatar.textContent = initialOf(peer.name);
@@ -822,8 +853,8 @@
 
       const retry = li.querySelector('.peer__retry');
       retry.hidden = ui.state === 'online';
-      retry.setAttribute('aria-label', `${peer.name} ile yeniden bağlan`);
-      retry.title = 'Bağlantıyı yeniden kur';
+      retry.setAttribute('aria-label', `Reconnect ${peer.name}`);
+      retry.title = 'Reconnect';
       retry.addEventListener('click', (event) => {
         event.stopPropagation();
         retryPeer(peer);
@@ -847,17 +878,17 @@
     const avatar = document.createElement('span');
     avatar.className = 'peer__avatar peer__avatar--self';
     avatar.setAttribute('aria-hidden', 'true');
-    avatar.textContent = initialOf(state.selfName || 'Sen');
+    avatar.textContent = initialOf(state.selfName || 'You');
 
     const copy = document.createElement('span');
     copy.className = 'peer__copy';
     const name = document.createElement('span');
     name.className = 'peer__name';
-    name.textContent = state.selfName || 'Bu cihaz';
+    name.textContent = state.selfName || 'This device';
     name.title = name.textContent;
     const badge = document.createElement('span');
     badge.className = 'peer-self-badge';
-    badge.textContent = 'SEN';
+    badge.textContent = 'YOU';
     name.appendChild(document.createTextNode(' '));
     name.appendChild(badge);
 
@@ -868,7 +899,7 @@
     dot.setAttribute('aria-hidden', 'true');
     const status = document.createElement('span');
     status.className = 'peer__status';
-    status.textContent = 'Bu cihaz';
+    status.textContent = 'This device';
     meta.append(dot, status);
 
     copy.append(name, meta);
@@ -888,18 +919,18 @@
     const connected = connectedPeers().length;
     const total = state.peers.size;
 
-    if (total === 0) els.peerCount.textContent = 'yalnız';
-    else if (connected === 0) els.peerCount.textContent = `${total} bekliyor`;
-    else els.peerCount.textContent = `${connected} bağlı`;
+    if (total === 0) els.peerCount.textContent = 'just you';
+    else if (connected === 0) els.peerCount.textContent = `${total} waiting`;
+    else els.peerCount.textContent = `${connected} connected`;
 
     if (state.signaling !== 'online' && connected === 0) {
-      els.meshLabel.textContent = 'SİNYAL YOK';
+      els.meshLabel.textContent = 'No signal';
     } else if (state.signaling !== 'online') {
-      els.meshLabel.textContent = 'P2P SÜRÜYOR';
+      els.meshLabel.textContent = 'P2P running';
     } else if (connected > 0) {
-      els.meshLabel.textContent = `MESH AKTİF · ${connected + 1} CİHAZ`;
+      els.meshLabel.textContent = `Mesh active · ${connected + 1} devices`;
     } else {
-      els.meshLabel.textContent = 'SİNYAL BEKLENİYOR';
+      els.meshLabel.textContent = 'Waiting for signal';
     }
 
     updateTargetSummary();
@@ -911,19 +942,19 @@
     els.targetSummary.classList.toggle('is-idle', targets.length === 0);
 
     if (state.peers.size === 0) {
-      els.targetText.textContent = 'Cihaz aranıyor…';
+      els.targetText.textContent = 'Looking for a device…';
       return;
     }
     if (targets.length === 0) {
       els.targetText.textContent =
-        state.selectedPeers.size > 0 ? 'Cihaz bağlantısı bekleniyor…' : 'Hedef seçilmedi';
+        state.selectedPeers.size > 0 ? 'Waiting for a device to connect…' : 'No target selected';
       return;
     }
     if (targets.length === 1) {
-      els.targetText.textContent = `Hedef: ${targets[0].name}`;
+      els.targetText.textContent = `Target: ${targets[0].name}`;
       return;
     }
-    els.targetText.textContent = `${targets.length} cihaza gönderilecek`;
+    els.targetText.textContent = `Sending to ${targets.length} devices`;
   }
 
   function togglePeerSelection(peerId) {
@@ -935,46 +966,46 @@
 
   function peerUiState(peer) {
     if (peer.dc && peer.dc.readyState === 'open') {
-      let label = 'Bağlı';
-      let title = 'Bağlantı hazır.';
+      let label = 'Connected';
+      let title = 'Connection ready.';
       if (peer.route === 'relay') {
-        label = 'Bağlı · TURN';
-        title = 'Trafik TURN sunucusu üzerinden aktarılıyor (uçtan uca DTLS şifreli).';
+        label = 'Connected · relay';
+        title = 'Traffic is relayed through the TURN server (end-to-end DTLS encrypted).';
       } else if (peer.route === 'direct') {
-        label = 'Bağlı · doğrudan';
-        title = 'Doğrudan tarayıcıdan tarayıcıya bağlantı.';
+        label = 'Connected · direct';
+        title = 'Direct browser-to-browser connection.';
       }
-      if (!peer.signalingOnline) label += ' · sinyal yok';
+      if (!peer.signalingOnline) label += ' · no signal';
       return { state: 'online', label, title };
     }
     if (peer.gaveUp) {
       return {
         state: 'offline',
-        label: 'Bağlantı kurulamadı',
-        title: 'Ağ P2P bağlantısını engelliyor olabilir. Yenile düğmesiyle tekrar deneyin; gerekirse sunucuda TURN yapılandırın.',
+        label: 'Could not connect',
+        title: 'The network may be blocking P2P. Try again with the retry button; if needed, configure TURN on the server.',
       };
     }
     if (peer.pc && peer.pc.connectionState === 'failed') {
       return {
         state: 'offline',
-        label: 'Bağlantı koptu',
-        title: 'Bağlantı koptu. Yenile düğmesiyle yeniden kurun.',
+        label: 'Connection lost',
+        title: 'Connection lost. Use the retry button to reconnect.',
       };
     }
     if (peer.pc && peer.pc.connectionState === 'disconnected') {
       return {
         state: 'connecting',
-        label: 'Bağlantı zayıf',
-        title: 'Bağlantı zayıfladı; toparlanmaya çalışılıyor.',
+        label: 'Weak connection',
+        title: 'The connection weakened; trying to recover.',
       };
     }
     if (peer.pc && peer.pc.connectionState === 'connected') {
-      return { state: 'connecting', label: 'Kanal açılıyor', title: 'WebRTC bağlı, veri kanalı açılıyor.' };
+      return { state: 'connecting', label: 'Opening channel', title: 'WebRTC connected, opening the data channel.' };
     }
     if (peer.pc && peer.pc.connectionState === 'closed') {
-      return { state: 'offline', label: 'Bağlantı kapandı', title: 'Bağlantı kapandı. Yenile düğmesiyle yeniden kurun.' };
+      return { state: 'offline', label: 'Connection closed', title: 'Connection closed. Use the retry button to reconnect.' };
     }
-    return { state: 'connecting', label: 'El sıkışıyor', title: 'WebRTC el sıkışması sürüyor.' };
+    return { state: 'connecting', label: 'Handshaking', title: 'WebRTC handshake in progress.' };
   }
 
   function connectedPeers() {
@@ -1082,7 +1113,7 @@
     });
 
     if (initiator) {
-      const channel = pc.createDataChannel('neondrop', { ordered: true });
+      const channel = pc.createDataChannel('ishare', { ordered: true });
       bindDataChannel(peer, channel);
     }
 
@@ -1116,7 +1147,7 @@
 
     let peer = state.peers.get(from);
     if (!peer) {
-      peer = upsertPeer({ id: from, name: 'Yeni cihaz' });
+      peer = upsertPeer({ id: from, name: 'New device' });
       if (!peer) return;
       renderPeerList();
     }
@@ -1141,7 +1172,7 @@
     if (peer.pc && !channelOpen) {
       // An offer without an open channel means the remote tab reloaded or
       // rebuilt its PeerConnection, so the local transport is stale.
-      cancelPeerTransfers(peer, 'WebRTC bağlantısı yeniden kuruluyor');
+      cancelPeerTransfers(peer, 'WebRTC connection reconnecting');
       closePeerTransport(peer);
     }
 
@@ -1226,7 +1257,7 @@
    * A cross-network handshake can fail silently: the offer is delivered but no
    * ICE pair ever succeeds (blocked UDP, expired TURN credential, asymmetric
    * NAT). Rebuild the transport a couple of times before surfacing a manual
-   * retry, instead of leaving the peer stuck on "El sıkışıyor" forever.
+   * retry, instead of leaving the peer stuck on "Handshaking" forever.
    */
   function armConnectWatchdog(peer, pc) {
     if (!peer || peer.destroyed || peer.dc?.readyState === 'open') return;
@@ -1243,7 +1274,7 @@
       peer.connectAttempts += 1;
       if (peer.connectAttempts <= MAX_CONNECT_ATTEMPTS) {
         console.warn(`[webrtc] no connection after ${CONNECT_TIMEOUT_MS}ms; rebuilding transport (attempt ${peer.connectAttempts})`);
-        cancelPeerTransfers(peer, 'Bağlantı yeniden kuruluyor');
+        cancelPeerTransfers(peer, 'Reconnecting');
         closePeerTransport(peer);
         beginInitiator(peer);
       } else {
@@ -1259,11 +1290,11 @@
     peer.connectAttempts = 0;
     peer.gaveUp = false;
     peer.failureNotified = false;
-    cancelPeerTransfers(peer, 'Bağlantı yeniden kuruluyor');
+    cancelPeerTransfers(peer, 'Reconnecting');
     closePeerTransport(peer);
     renderPeerList();
     beginInitiator(peer);
-    toast(`${peer.name} ile bağlantı yeniden kuruluyor…`, 'info', 2600);
+    toast(`Reconnecting to ${peer.name}…`, 'info', 2600);
   }
 
   async function detectPeerRoute(peer, pc) {
@@ -1290,7 +1321,7 @@
       peer.routeDetail = `${local?.candidateType || '?'} ↔ ${remote?.candidateType || '?'}`;
       renderPeerList();
     } catch (error) {
-      /* getStats is optional; the plain "Bağlı" label remains accurate */
+      /* getStats is optional; the plain "Connected" label remains accurate */
     }
   }
 
@@ -1331,7 +1362,7 @@
     channel.addEventListener('close', () => {
       if (peer.dc !== channel) return;
       peer.dc = null;
-      cancelPeerTransfers(peer, 'Veri kanalı kapandı');
+      cancelPeerTransfers(peer, 'Data channel closed');
       renderPeerList();
     });
 
@@ -1351,7 +1382,7 @@
     if (peer.failureNotified) return;
     peer.failureNotified = true;
     toast(
-      `${peer.name} ile P2P bağlantı kurulamadı. Cihaz listesindeki yenile düğmesiyle tekrar deneyin; katı/kurumsal ağlarda sunucuda TURN yapılandırması gerekir.`,
+      `${peer.name}: the P2P connection failed. Try again with the retry button in the device list; strict or corporate networks need TURN configured on the server.`,
       'error',
       9000,
     );
@@ -1411,7 +1442,7 @@
     switch (message.type) {
       case 'hello':
         if (message.protocol !== PROTOCOL_VERSION) {
-          toast(`${peer.name} uyumsuz bir istemci sürümü kullanıyor.`, 'error');
+          toast(`${peer.name} is using an incompatible client version.`, 'error');
         }
         break;
 
@@ -1470,7 +1501,7 @@
 
     if (peer.incoming) {
       if (message.id !== peer.incoming.protocolId) {
-        sendControl(peer, { type: 'file-reject', id: message.id, reason: 'Cihaz başka bir dosya alıyor' });
+        sendControl(peer, { type: 'file-reject', id: message.id, reason: 'Device is already receiving another file' });
       }
       return;
     }
@@ -1479,13 +1510,13 @@
     const name = sanitizeFileName(message.name);
     const mime = sanitizeMime(message.mime);
     if (protocol.validateFileSize(size, MAX_FILE_BYTES)) {
-      sendControl(peer, { type: 'file-reject', id: message.id, reason: 'Geçersiz dosya boyutu' });
+      sendControl(peer, { type: 'file-reject', id: message.id, reason: 'Invalid file size' });
       return;
     }
 
     const key = `in:${peer.id}:${message.id}`;
     if (state.transfers.has(key)) {
-      sendControl(peer, { type: 'file-reject', id: message.id, reason: 'Aktarım zaten var' });
+      sendControl(peer, { type: 'file-reject', id: message.id, reason: 'Transfer already in progress' });
       return;
     }
 
@@ -1532,7 +1563,7 @@
     if (!transfer || transfer.direction !== 'in' || transfer.status !== 'incoming' || transfer.accepting) return;
     const peer = state.peers.get(transfer.peerId);
     if (!peer || !peer.dc || peer.dc.readyState !== 'open') {
-      rejectIncoming(transfer, 'Cihaz bağlı değil');
+      rejectIncoming(transfer, 'Device not connected');
       return;
     }
 
@@ -1550,7 +1581,7 @@
       } catch (error) {
         if (error && error.name === 'AbortError') {
           transfer.accepting = false;
-          rejectIncoming(transfer, 'Kayıt iptal edildi', { sendReject: true });
+          rejectIncoming(transfer, 'Save cancelled', { sendReject: true });
           return;
         }
         console.warn('[receive] direct-to-disk unavailable, using memory', error);
@@ -1584,7 +1615,7 @@
 
     if (!sendControl(peer, { type: 'file-accept', id: transfer.protocolId })) {
       await abortIncoming(transfer);
-      failIncoming(transfer, 'Veri kanalı kapandı', { notifyPeer: false });
+      failIncoming(transfer, 'Data channel closed', { notifyPeer: false });
     }
   }
 
@@ -1596,12 +1627,12 @@
       sendControl(peer, {
         type: 'file-reject',
         id: transfer.protocolId,
-        reason: String(reason || 'Reddedildi').slice(0, 120),
+        reason: String(reason || 'Declined').slice(0, 120),
       });
     }
     if (peer?.incoming === transfer) peer.incoming = null;
     transfer.status = 'rejected';
-    transfer.error = reason || 'Reddedildi';
+    transfer.error = reason || 'Declined';
     transfer.accepting = false;
     updateTransferUI(transfer, true);
   }
@@ -1611,15 +1642,15 @@
     if (!transfer || !(buffer instanceof ArrayBuffer)) return;
     const problem = protocol.validateIncomingChunk(transfer, buffer.byteLength);
     if (problem === 'chunk-too-large') {
-      failIncoming(transfer, 'Geçersiz veri parçası');
+      failIncoming(transfer, 'Invalid data chunk');
       return;
     }
     if (problem === 'size-overflow') {
-      failIncoming(transfer, 'Dosya boyutu aşıldı');
+      failIncoming(transfer, 'File size exceeded');
       return;
     }
     if (problem === 'write-error') {
-      failIncoming(transfer, 'Diske yazılamadı');
+      failIncoming(transfer, 'Could not write to disk');
       return;
     }
     if (problem) return;
@@ -1652,7 +1683,7 @@
     const transfer = peer.incoming;
     if (!transfer || transfer.protocolId !== protocolId) return;
     if (transfer.bytes !== transfer.size) {
-      failIncoming(transfer, 'Aktarım eksik tamamlandı');
+      failIncoming(transfer, 'Transfer finished incomplete');
       return;
     }
 
@@ -1683,14 +1714,14 @@
       if (transfer.storage === 'disk') {
         toast(`${transfer.fileName} kaydedildi.`, 'success', 4000);
       } else {
-        toast(`${transfer.name} hazır. İndirme başlatılıyor.`, 'success', 4000);
+        toast(`${transfer.name} is ready. Starting the download.`, 'success', 4000);
         triggerDownload(transfer);
       }
     } catch (error) {
       console.warn('[receive] finalize failed', error);
       if (peer.incoming === transfer) peer.incoming = null;
       transfer.status = 'error';
-      transfer.error = 'Dosya kaydedilemedi';
+      transfer.error = 'Could not save the file';
       updateTransferUI(transfer, true);
       sendControl(peer, { type: 'file-error', id: transfer.protocolId, reason: 'save-failed' });
       await abortIncoming(transfer);
@@ -1703,7 +1734,7 @@
     const peer = state.peers.get(transfer.peerId);
     if (peer?.incoming === transfer) peer.incoming = null;
     transfer.status = 'error';
-    transfer.error = reason || 'Aktarım başarısız';
+    transfer.error = reason || 'Transfer failed';
     transfer.accepting = false;
     updateTransferUI(transfer, true);
     if (options.notifyPeer !== false && peer) {
@@ -1757,7 +1788,7 @@
     if (!state.room) return;
     const targets = selectedConnectedPeers();
     if (targets.length === 0) {
-      toast('Önce en az bir bağlı cihaz seç.', 'error');
+      toast('Select at least one connected device first.', 'error');
       return;
     }
 
@@ -1816,13 +1847,13 @@
 
     if (queued > 0) {
       toast(
-        `${queued} aktarım sıraya alındı${targets.length > 1 ? ` · ${targets.length} cihaz` : ''}.`,
+        `${queued} transfer${queued === 1 ? '' : 's'} queued${targets.length > 1 ? ` · ${targets.length} devices` : ''}.`,
         'info',
         3200,
       );
     }
     if (skipped > 0) {
-      toast(`${skipped} dosya 100 GB sınırını aştığı için atlandı.`, 'error', 5000);
+      toast(`${skipped} file${skipped === 1 ? '' : 's'} skipped because the size limit is 100 GB.`, 'error', 5000);
     }
   }
 
@@ -1844,7 +1875,7 @@
     const channel = peer.dc;
     if (!channel || channel.readyState !== 'open') {
       transfer.status = 'error';
-      transfer.error = 'Cihaz bağlı değil';
+      transfer.error = 'Device not connected';
       updateTransferUI(transfer, true);
       return;
     }
@@ -1860,17 +1891,17 @@
     if (!accepted) {
       if (!['rejected', 'error', 'cancelled'].includes(transfer.status)) {
         transfer.status = 'error';
-        transfer.error = transfer.rejectReason || 'Dosya kabul edilmedi';
+        transfer.error = transfer.rejectReason || 'File was not accepted';
       }
       // The accept timer has already flipped the status; the card still needs
-      // a render or it would stay on "Kabul bekleniyor" forever.
+      // a render or it would stay on "Waiting for acceptance" forever.
       updateTransferUI(transfer, true);
       return;
     }
 
     if (peer.dc !== channel || channel.readyState !== 'open') {
       transfer.status = 'error';
-      transfer.error = 'Veri kanalı koptu';
+      transfer.error = 'Data channel lost';
       updateTransferUI(transfer, true);
       return;
     }
@@ -1920,7 +1951,7 @@
 
       const delivery = await waitForDelivery(peer, transfer);
       if (transfer.status === 'cancelled') {
-        transfer.error = transfer.error || 'İptal edildi';
+        transfer.error = transfer.error || 'Cancelled';
       } else if (delivery.ok) {
         transfer.status = 'complete';
         transfer.delivered = true;
@@ -1931,18 +1962,18 @@
         transfer.completedAt = Date.now();
       } else {
         transfer.status = 'error';
-        transfer.error = delivery.reason || 'Karşı cihaz dosyayı kaydedemedi';
+        transfer.error = delivery.reason || 'The other device could not save the file';
       }
       updateTransferUI(transfer, true);
     } catch (error) {
       if (transfer.cancelled || error?.code === 'cancelled') {
         if (!['cancelled', 'error', 'rejected'].includes(transfer.status)) {
           transfer.status = 'cancelled';
-          transfer.error = 'İptal edildi';
+          transfer.error = 'Cancelled';
         }
       } else if (transfer.status !== 'rejected' && transfer.status !== 'error') {
         transfer.status = 'error';
-        transfer.error = error?.code === 'channel-closed' ? 'Veri kanalı koptu' : 'Aktarım başarısız oldu';
+        transfer.error = error?.code === 'channel-closed' ? 'Data channel lost' : 'Transfer failed';
         if (error?.code !== 'channel-closed') {
           sendControl(peer, {
             type: 'file-cancel',
@@ -1973,9 +2004,9 @@
 
       transfer.acceptTimer = window.setTimeout(() => {
         if (!transfer.acceptResolve) return;
-        transfer.rejectReason = 'Kabul zaman aşımı';
+        transfer.rejectReason = 'Accept timed out';
         transfer.status = 'error';
-        transfer.error = 'Cihaz 2 dakika içinde yanıt vermedi';
+        transfer.error = 'The device did not respond within 2 minutes';
         sendControl(peer, { type: 'file-cancel', id: transfer.protocolId, reason: 'accept-timeout' });
         transfer.acceptResolve(false);
       }, ACCEPT_TIMEOUT_MS);
@@ -1989,7 +2020,7 @@
       });
       if (!sent) {
         transfer.status = 'error';
-        transfer.error = 'Veri kanalı kapalı';
+        transfer.error = 'Data channel closed';
         transfer.acceptResolve(false);
       }
     });
@@ -2009,7 +2040,7 @@
       }, DELIVERY_TIMEOUT_MS);
 
       if (!sendControl(peer, { type: 'file-end', id: transfer.protocolId })) {
-        transfer.completeResolve?.({ ok: false, reason: 'Veri kanalı kapandı' });
+        transfer.completeResolve?.({ ok: false, reason: 'Data channel closed' });
       }
     });
   }
@@ -2045,7 +2076,7 @@
     if (!isSafeId(protocolId)) return;
     const transfer = findOutgoingTransfer(peer.id, protocolId);
     if (!transfer) return;
-    transfer.rejectReason = String(reason || 'Dosya reddedildi').slice(0, 160);
+    transfer.rejectReason = String(reason || 'File declined').slice(0, 160);
     transfer.status = 'rejected';
     transfer.error = transfer.rejectReason;
     updateTransferUI(transfer, true);
@@ -2065,11 +2096,11 @@
     const transfer = findOutgoingTransfer(peer.id, protocolId);
     if (!transfer) return;
     if (transfer.status === 'awaiting-ack') {
-      transfer.completeResolve?.({ ok: false, reason: String(reason || 'Karşı cihaz kaydedemedi') });
+      transfer.completeResolve?.({ ok: false, reason: String(reason || 'The other device could not save it') });
     } else {
       transfer.cancelled = true;
       transfer.status = 'error';
-      transfer.error = 'Karşı cihaz dosyayı kaydedemedi';
+      transfer.error = 'The other device could not save the file';
       transfer.acceptResolve?.(false);
       updateTransferUI(transfer, true);
     }
@@ -2082,7 +2113,7 @@
       outgoing.cancelled = true;
       if (!['complete', 'error'].includes(outgoing.status)) {
         outgoing.status = 'cancelled';
-        outgoing.error = String(reason === 'receive-error' ? 'Alıcıda hata oluştu' : 'Karşı cihaz iptal etti');
+        outgoing.error = String(reason === 'receive-error' ? 'Error on the receiver' : 'The other device cancelled');
       }
       outgoing.acceptResolve?.(false);
       outgoing.completeResolve?.({ ok: false, reason: outgoing.error });
@@ -2094,7 +2125,7 @@
       peer.incoming = null;
       incoming.cancelled = true;
       incoming.status = 'cancelled';
-      incoming.error = 'Gönderen iptal etti';
+      incoming.error = 'The sender cancelled';
       updateTransferUI(incoming, true);
       abortIncoming(incoming);
     }
@@ -2111,7 +2142,7 @@
 
   function cancelPeerTransfers(peer, reason) {
     peer.sendQueue = [];
-    const message = reason || 'Bağlantı kapandı';
+    const message = reason || 'Connection closed';
     for (const transfer of state.transfers.values()) {
       if (transfer.peerId !== peer.id) continue;
       if (['complete', 'error', 'cancelled', 'rejected'].includes(transfer.status)) continue;
@@ -2189,14 +2220,14 @@
     if (['sending', 'receiving'].includes(transfer.status) && transfer.speed > 0) {
       speedEl.textContent = formatSpeed(transfer.speed);
     } else if (transfer.status === 'complete') {
-      speedEl.textContent = 'tamamlandı';
+      speedEl.textContent = 'done';
     } else {
       speedEl.textContent = '—';
     }
 
     const progress = el.querySelector('.progress-track');
     progress.setAttribute('aria-valuenow', String(rounded));
-    progress.setAttribute('aria-label', `${transfer.name} aktarım yüzdesi`);
+    progress.setAttribute('aria-label', `${transfer.name} transfer progress`);
     el.querySelector('.progress-fill').style.width = `${percent}%`;
 
     const statusEl = el.querySelector('.transfer__status');
@@ -2213,33 +2244,33 @@
   function transferStatusLabel(transfer) {
     switch (transfer.status) {
       case 'queued':
-        return 'Sırada';
+        return 'Queued';
       case 'offered':
-        return 'Kabul bekleniyor';
+        return 'Waiting for acceptance';
       case 'sending':
-        return 'Gönderiliyor';
+        return 'Sending';
       case 'awaiting-ack':
-        return 'Karşı cihaz kaydediyor';
+        return 'The other device is saving';
       case 'incoming':
-        return 'Gelen dosya · kabul et';
+        return 'Incoming file · accept';
       case 'preparing':
-        return 'Kayıt yeri seçiliyor';
+        return 'Choosing save location';
       case 'receiving':
-        return 'Alınıyor';
+        return 'Receiving';
       case 'processing':
-        return 'Dosya işleniyor';
+        return 'Processing file';
       case 'complete':
         if (transfer.direction === 'out') {
-          if (transfer.unconfirmed) return 'Gönderildi · onay yok';
-          return transfer.delivered ? 'Karşıya ulaştı' : 'Gönderildi';
+          if (transfer.unconfirmed) return 'Sent · unconfirmed';
+          return transfer.delivered ? 'Delivered' : 'Sent';
         }
-        return transfer.storage === 'disk' ? 'Kaydedildi' : 'İndirilebilir';
+        return transfer.storage === 'disk' ? 'Saved' : 'Ready to download';
       case 'rejected':
-        return transfer.error || 'Reddedildi';
+        return transfer.error || 'Declined';
       case 'cancelled':
-        return transfer.error || 'İptal edildi';
+        return transfer.error || 'Cancelled';
       case 'error':
-        return transfer.error || 'Hata';
+        return transfer.error || 'Failed';
       default:
         return transfer.status;
     }
@@ -2253,25 +2284,25 @@
     if (transfer.direction === 'in') {
       if (transfer.status === 'incoming') {
         container.append(
-          actionButton('Kabul et', 'accept', 'primary'),
-          actionButton('Reddet', 'reject', 'danger'),
+          actionButton('Accept', 'accept', 'primary'),
+          actionButton('Decline', 'reject', 'danger'),
         );
       } else if (transfer.status === 'receiving') {
-        container.append(actionButton('İptal', 'cancel', 'danger'));
+        container.append(actionButton('Cancel', 'cancel', 'danger'));
       } else if (transfer.status === 'complete' && transfer.downloadUrl) {
         const link = document.createElement('a');
         link.className = 'btn btn--small btn--primary';
         link.href = transfer.downloadUrl;
         link.download = transfer.fileName || transfer.name;
-        link.textContent = 'İndir';
+        link.textContent = 'Download';
         container.appendChild(link);
       }
     } else if (['queued', 'offered', 'sending', 'awaiting-ack'].includes(transfer.status)) {
-      container.append(actionButton('İptal', 'cancel', 'danger'));
+      container.append(actionButton('Cancel', 'cancel', 'danger'));
     }
 
     if (['complete', 'error', 'rejected', 'cancelled'].includes(transfer.status)) {
-      container.append(actionButton('Kaldır', 'remove', 'ghost'));
+      container.append(actionButton('Remove', 'remove', 'ghost'));
     }
   }
 
@@ -2286,7 +2317,7 @@
 
   function updateTransferCount() {
     const count = state.transfers.size;
-    els.transferCount.textContent = `${count} aktarım`;
+    els.transferCount.textContent = `${count} transfer${count === 1 ? '' : 's'}`;
     els.transferEmpty.hidden = count > 0;
   }
 
@@ -2328,7 +2359,7 @@
       if (transfer.status === 'queued') {
         transfer.cancelled = true;
         transfer.status = 'cancelled';
-        transfer.error = 'İptal edildi';
+        transfer.error = 'Cancelled';
         if (peer) {
           peer.sendQueue = peer.sendQueue.filter((item) => item !== transfer);
         }
@@ -2339,9 +2370,9 @@
       if (['offered', 'sending', 'awaiting-ack'].includes(transfer.status)) {
         transfer.cancelled = true;
         transfer.status = 'cancelled';
-        transfer.error = 'İptal edildi';
+        transfer.error = 'Cancelled';
         transfer.acceptResolve?.(false);
-        transfer.completeResolve?.({ ok: false, reason: 'İptal edildi' });
+        transfer.completeResolve?.({ ok: false, reason: 'Cancelled' });
         if (peer) {
           sendControl(peer, {
             type: 'file-cancel',
@@ -2355,14 +2386,14 @@
     }
 
     if (transfer.status === 'incoming') {
-      rejectIncoming(transfer, 'Kullanıcı reddetti');
+      rejectIncoming(transfer, 'User declined');
       return;
     }
 
     if (transfer.status === 'receiving') {
       transfer.cancelled = true;
       transfer.status = 'cancelled';
-      transfer.error = 'İptal edildi';
+      transfer.error = 'Cancelled';
       if (peer) {
         if (peer.incoming === transfer) peer.incoming = null;
         sendControl(peer, {
@@ -2400,13 +2431,13 @@
     const text = els.textInput.value.replace(/\r\n/g, '\n').trim();
     if (!text) return;
     if (text.length > MAX_TEXT_LENGTH) {
-      toast(`Metin en fazla ${MAX_TEXT_LENGTH.toLocaleString('tr-TR')} karakter olabilir.`, 'error');
+      toast(`Text can be at most ${MAX_TEXT_LENGTH.toLocaleString('en-US')} characters.`, 'error');
       return;
     }
 
     const targets = selectedConnectedPeers();
     if (targets.length === 0) {
-      toast('Metin göndermek için bağlı bir cihaz seç.', 'error');
+      toast('Select a connected device to send text.', 'error');
       return;
     }
 
@@ -2427,7 +2458,7 @@
     }
 
     if (sent === 0) {
-      toast('Metin gönderilemedi. Bağlantıyı kontrol et.', 'error');
+      toast('Could not send the text. Check the connection.', 'error');
       return;
     }
 
@@ -2444,13 +2475,13 @@
     const timeEl = node.querySelector('.message__time');
     const textEl = node.querySelector('.message__text');
 
-    senderEl.textContent = outgoing ? 'SEN' : cleanName(sender, 32) || 'Cihaz';
+    senderEl.textContent = outgoing ? 'YOU' : cleanName(sender, 32) || 'Device';
     senderEl.title = senderEl.textContent;
     const timestamp = Number(at);
     let date = new Date(Number.isFinite(timestamp) ? timestamp : Date.now());
     if (Number.isNaN(date.getTime())) date = new Date();
     timeEl.dateTime = date.toISOString();
-    timeEl.textContent = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    timeEl.textContent = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     textEl.textContent = text;
     if (outgoing) node.classList.add('message--outgoing');
 
@@ -2471,7 +2502,7 @@
 
   function updateTextComposer() {
     const length = els.textInput.value.length;
-    els.textCounter.textContent = `${length.toLocaleString('tr-TR')} / ${MAX_TEXT_LENGTH.toLocaleString('tr-TR')}`;
+    els.textCounter.textContent = `${length.toLocaleString('en-US')} / ${MAX_TEXT_LENGTH.toLocaleString('en-US')}`;
     updateSendAvailability();
   }
 
@@ -2479,7 +2510,7 @@
     const hasText = els.textInput.value.trim().length > 0;
     const hasTargets = selectedConnectedPeers().length > 0;
     els.btnSendText.disabled = !hasText || !hasTargets;
-    els.btnSendText.title = !hasTargets ? 'Önce bağlı bir cihaz seç' : '';
+    els.btnSendText.title = !hasTargets ? 'Select a connected device first' : '';
   }
 
   // ---------------------------------------------------------------------------
@@ -2497,7 +2528,7 @@
     clearTimeout(state.joinTimer);
     state.joinTimer = null;
 
-    closeAllPeers('Odadan ayrıldın');
+    closeAllPeers('You left the room');
     clearRoomLists();
 
     state.room = null;
@@ -2510,7 +2541,7 @@
     hideOfflineBanner();
     setJoinBusy(false);
     showLandingView();
-    toast('Odadan ayrıldın.');
+    toast('You left the room.');
     els.roomInput.focus({ preventScroll: true });
 
     if (!state.ws || state.ws.readyState === WebSocket.CLOSED) {
@@ -2543,9 +2574,9 @@
     els.roomCodeDisplay.textContent = '------';
     els.textInput.value = '';
     els.targetSummary.classList.add('is-idle');
-    els.targetText.textContent = 'Cihaz aranıyor…';
-    els.peerCount.textContent = 'yalnız';
-    els.meshLabel.textContent = 'SİNYAL BEKLENİYOR';
+    els.targetText.textContent = 'Looking for a device…';
+    els.peerCount.textContent = 'just you';
+    els.meshLabel.textContent = 'Waiting for signal';
     updateTextComposer();
     updateTransferCount();
   }
@@ -2560,7 +2591,7 @@
     spinner.className = 'spinner';
     spinner.setAttribute('aria-hidden', 'true');
     const label = document.createElement('span');
-    label.textContent = 'QR hazırlanıyor…';
+    label.textContent = 'Preparing QR…';
     els.qrLoading.replaceChildren(spinner, label);
     els.qrLoading.hidden = false;
     els.qrImage.removeAttribute('src');
@@ -2574,7 +2605,7 @@
     els.qrImage.onerror = () => {
       els.qrLoading.replaceChildren();
       const errorLabel = document.createElement('span');
-      errorLabel.textContent = 'QR oluşturulamadı. Bağlantıyı kopyalayabilirsin.';
+      errorLabel.textContent = 'Could not create the QR code. You can copy the link instead.';
       els.qrLoading.appendChild(errorLabel);
     };
     els.qrImage.src = `${api}&v=${Date.now()}`;
@@ -2629,8 +2660,8 @@
       }
     }
 
-    if (copied) toast(successMessage || 'Kopyalandı.', 'success');
-    else toast('Kopyalanamadı. Bağlantıyı elle seçebilirsin.', 'error');
+    if (copied) toast(successMessage || 'Copied.', 'success');
+    else toast('Could not copy. Select the link manually.', 'error');
   }
 
   function toast(message, type = 'info', duration = 3800) {
@@ -2708,14 +2739,14 @@
     if (hasTurn) {
       els.netChip.dataset.mode = 'turn';
       els.netChip.textContent =
-        state.config.turnMode === 'dynamic' ? 'TURN · kısa ömürlü' : 'TURN hazır';
+        state.config.turnMode === 'dynamic' ? 'TURN · short-lived' : 'TURN ready';
       els.netChip.title =
-        'TURN yapılandırıldı: farklı ağlardaki cihazlar da birbirine bağlanabilir. Trafik uçtan uca DTLS ile şifrelidir.';
+        'TURN configured: devices on different networks can connect too. Traffic is end-to-end DTLS encrypted.';
     } else {
       els.netChip.dataset.mode = 'stun';
       els.netChip.textContent = 'STUN';
       els.netChip.title =
-        'Yalnızca STUN: çoğu ev ağında yeterlidir. Katı NAT veya kurumsal ağlarda sunucuda TURN yapılandırın.';
+        'STUN only: enough for most home networks. On strict NAT or corporate networks, configure TURN on the server.';
     }
   }
 
@@ -2736,7 +2767,7 @@
   }
 
   function suggestDeviceName() {
-    let device = 'Neon';
+    let device = 'iShare';
     const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
     if (/win/i.test(platform)) device = 'Windows';
     else if (/android/i.test(platform)) device = 'Android';
@@ -2744,14 +2775,14 @@
     else if (/mac/i.test(platform)) device = 'Mac';
     else if (/linux/i.test(platform)) device = 'Linux';
 
-    const animals = ['Vaşak', 'Şahin', 'Tilki', 'Panter', 'Kartal', 'Yunus', 'Baykuş', 'Çita'];
+    const animals = ['Lynx', 'Falcon', 'Fox', 'Panther', 'Eagle', 'Dolphin', 'Owl', 'Cheetah'];
     const animal = animals[Math.floor(Math.random() * animals.length)];
     return `${device} ${animal}`.slice(0, 32);
   }
 
   function readStoredName() {
     try {
-      return cleanName(window.localStorage.getItem('neondrop:name') || '', 32);
+      return cleanName(window.localStorage.getItem('ishare:name') || '', 32);
     } catch (error) {
       return '';
     }
@@ -2759,7 +2790,7 @@
 
   function storeName(name) {
     try {
-      window.localStorage.setItem('neondrop:name', name);
+      window.localStorage.setItem('ishare:name', name);
     } catch (error) {
       /* private mode */
     }
@@ -2862,7 +2893,7 @@
 
   function initialOf(name) {
     const chars = Array.from(String(name || '').trim());
-    return (chars[0] || '?').toLocaleUpperCase('tr-TR');
+    return (chars[0] || '?').toLocaleUpperCase();
   }
 
   function hashTone(value) {
@@ -2880,11 +2911,11 @@
     const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
     const amount = bytes / 1024 ** index;
     const decimals = index === 0 || amount >= 100 ? 0 : amount >= 10 ? 1 : 2;
-    return `${amount.toFixed(decimals).replace('.', ',')} ${units[index]}`;
+    return `${amount.toFixed(decimals)} ${units[index]}`;
   }
 
   function formatSpeed(bytesPerSecond) {
-    return `${formatBytes(bytesPerSecond)}/sn`;
+    return `${formatBytes(bytesPerSecond)}/s`;
   }
 
   function sleep(ms) {
